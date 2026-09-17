@@ -169,7 +169,16 @@ bool TouchControls_Active(void) {
     return false;
   // Default (0): automatic, only when no gamepad is connected. That keeps a
   // handheld with physical controls from being cluttered with buttons.
-  return SDL_NumJoysticks() == 0;
+  //
+  // Counting joysticks is not enough: SDL registers the Android accelerometer
+  // as one (SDL_HINT_ACCELEROMETER_AS_JOYSTICK defaults to true), so every
+  // phone reports at least one and the controls would never appear. Only
+  // devices SDL recognises as game controllers count.
+  for (int i = 0; i < SDL_NumJoysticks(); i++) {
+    if (SDL_IsGameController(i))
+      return false;
+  }
+  return true;
 }
 
 static uint32 HitTest(float x, float y) {
