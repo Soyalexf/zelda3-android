@@ -11,7 +11,8 @@ obtained copy of *The Legend of Zelda: A Link to the Past (USA)*.
 
 1. Download the APK from [Releases](https://github.com/Soyalexf/zelda3-android/releases) and install it.
 2. Open it. It asks for your ROM and opens the system file picker.
-3. Pick your own legally obtained **A Link to the Past (USA)** ROM. Done.
+3. Pick your own legally obtained **A Link to the Past (USA)** ROM.
+4. Choose the game language, English or Spanish. Done.
 
 The app copies the ROM into its own folder and builds the game data from it. No
 PC, no cable, no Python, and no fighting with `Android/data/`.
@@ -44,6 +45,14 @@ Everything is configurable from the menu: turning the buttons on or off,
 choosing d-pad or stick, and a **layout mode** for dragging each button wherever
 you want it. Positions are saved to `touch_layout.txt`, and there is an option
 to restore the defaults.
+
+**Spanish, built on device**
+The Spanish translation used to need a PC: extracting its dialogue with
+`restool.py` and copying a 700 KB asset file onto the device by hand. Both
+languages now ship as BPS patches instead, 14 KB for English and 43 KB for
+Spanish, and the chosen one is applied to your ROM at setup. The Spanish text
+comes from [translation #2195](https://www.romhacking.net/translations/2195/);
+`tools/bps.py` is what builds the patches.
 
 **On-device setup, with a ROM picker**
 On first run the app asks for your ROM through the system file picker, copies it

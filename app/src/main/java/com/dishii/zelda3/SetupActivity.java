@@ -74,12 +74,16 @@ public class SetupActivity extends Activity {
         if (new File(dir, "zelda3_assets.dat").exists())
             return true;
         File rom = new File(dir, "zelda3.sfc");
-        return rom.exists() && romMatchesPatch(rom);
+        // A ROM alone is not enough: a language has to have been picked, which
+        // is what puts the chosen patch in place.
+        return rom.exists() && romMatchesPatch(rom)
+                && new File(dir, "zelda3_assets.bps").exists();
     }
 
     /** The expected ROM checksum, read from the bundled BPS patch's footer. */
     private long expectedRomCrc() {
-        File bps = new File(filesDir(), "zelda3_assets.bps");
+        // Both patches expect the same source ROM, so either answers this.
+        File bps = new File(filesDir(), "zelda3_assets_en.bps");
         try (RandomAccessFile f = new RandomAccessFile(bps, "r")) {
             if (f.length() < 12)
                 return -1;
@@ -123,7 +127,10 @@ public class SetupActivity extends Activity {
             // Reference saves are optional; not worth blocking startup for.
         }
         copyAssetIfMissing("zelda3.ini", new File(dir, "zelda3.ini"));
-        copyAssetIfMissing("zelda3_assets.bps", new File(dir, "zelda3_assets.bps"));
+        // Both language patches are deployed; picking a language copies one of
+        // them to the name the engine looks for.
+        copyAssetIfMissing("zelda3_assets_en.bps", new File(dir, "zelda3_assets_en.bps"));
+        copyAssetIfMissing("zelda3_assets_es.bps", new File(dir, "zelda3_assets_es.bps"));
     }
 
     private void copyAssetIfMissing(String assetName, File target) {
@@ -235,7 +242,112 @@ public class SetupActivity extends Activity {
                     Toast.LENGTH_LONG).show();
             return;
         }
+        showLanguageChoice();
+    }
+
+    /** Asked once, after the ROM is accepted: which language to build. */
+    private void showLanguageChoice() {
+        int pad = dp(24);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER);
+        root.setPadding(pad, pad, pad, pad);
+        root.setBackgroundColor(Color.parseColor("#101018"));
+
+        TextView title = new TextView(this);
+        title.setText(t("Game language", "Idioma del juego"));
+        title.setTextColor(Color.parseColor("#F0D060"));
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26);
+        title.setGravity(Gravity.CENTER);
+
+        TextView body = new TextView(this);
+        body.setText(t("This is the language of the game's own text. "
+                        + "It is built from your ROM now, so it cannot be changed later "
+                        + "without setting up again.",
+                "Este es el idioma de los textos del juego. Se genera ahora a partir "
+                        + "de tu ROM, así que no se puede cambiar después sin volver a "
+                        + "configurar."));
+        body.setTextColor(Color.parseColor("#C0C0CC"));
+        body.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        body.setGravity(Gravity.CENTER);
+        body.setPadding(0, dp(16), 0, dp(28));
+
+        Button en = new Button(this);
+        en.setText("ENGLISH");
+        en.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { applyLanguage(false); }
+        });
+        Button es = new Button(this);
+        es.setText("ESPAÑOL");
+        es.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { applyLanguage(true); }
+        });
+
+        root.addView(title);
+        root.addView(body);
+        root.addView(en);
+        root.addView(es);
+        setContentView(root);
+    }
+
+    private void applyLanguage(boolean spanish) {
+        File dir = filesDir();
+        File chosen = new File(dir, spanish ? "zelda3_assets_es.bps"
+                                            : "zelda3_assets_en.bps");
+        File target = new File(dir, "zelda3_assets.bps");
+        try (InputStream in = new java.io.FileInputStream(chosen);
+             FileOutputStream out = new FileOutputStream(target)) {
+            copy(in, out);
+        } catch (IOException e) {
+            Toast.makeText(this, t("Could not prepare that language",
+                    "No se pudo preparar ese idioma"), Toast.LENGTH_LONG).show();
+            return;
+        }
+        setIniLanguage(spanish ? "es" : null);
         startGame();
+    }
+
+    /**
+     * Sets, or comments out, the Language key in the .ini. The engine reads it
+     * from the [General] section, so the existing line is rewritten in place
+     * rather than appended, which would land it in whatever section is last.
+     */
+    private void setIniLanguage(String lang) {
+        File ini = new File(filesDir(), "zelda3.ini");
+        try {
+            byte[] raw = new byte[(int) ini.length()];
+            try (java.io.FileInputStream in = new java.io.FileInputStream(ini)) {
+                int got = 0;
+                while (got < raw.length) {
+                    int n = in.read(raw, got, raw.length - got);
+                    if (n <= 0) break;
+                    got += n;
+                }
+            }
+            String text = new String(raw, "UTF-8");
+            String eol = text.contains("\r\n") ? "\r\n" : "\n";
+            String[] lines = text.split("\r?\n", -1);
+            String want = lang == null ? "# Language = de" : "Language = " + lang;
+            boolean done = false;
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < lines.length; i++) {
+                String line = lines[i];
+                String trimmed = line.trim();
+                if (!done && (trimmed.startsWith("Language")
+                        || trimmed.startsWith("# Language"))) {
+                    line = want;
+                    done = true;
+                }
+                sb.append(line);
+                if (i < lines.length - 1)
+                    sb.append(eol);
+            }
+            try (FileOutputStream out = new FileOutputStream(ini)) {
+                out.write(sb.toString().getBytes("UTF-8"));
+            }
+        } catch (Exception e) {
+            // Leaving the default language is better than failing to start.
+        }
     }
 
     private boolean copyRom(Uri uri) {
