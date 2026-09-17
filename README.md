@@ -7,6 +7,15 @@ C reimplementation of *A Link to the Past*.
 No ROM or extracted asset data is distributed here. You need your own legally
 obtained copy of *The Legend of Zelda: A Link to the Past (USA)*.
 
+## Installing
+
+1. Download the APK from [Releases](https://github.com/Soyalexf/zelda3-android/releases) and install it.
+2. Open it. It asks for your ROM and opens the system file picker.
+3. Pick your own legally obtained **A Link to the Past (USA)** ROM. Done.
+
+The app copies the ROM into its own folder and builds the game data from it. No
+PC, no cable, no Python, and no fighting with `Android/data/`.
+
 ## What this fork adds
 
 **Locked widescreen camera** (`WidescreenEdgeMode = 1`)
@@ -36,10 +45,13 @@ choosing d-pad or stick, and a **layout mode** for dragging each button wherever
 you want it. Positions are saved to `touch_layout.txt`, and there is an option
 to restore the defaults.
 
-**Asset generation on-device**
-Just drop your ROM into the data folder as `zelda3.sfc`. The game builds
-`zelda3_assets.dat` by itself, applying a bundled 14 KB BPS patch. No PC and no
-Python required.
+**On-device setup, with a ROM picker**
+On first run the app asks for your ROM through the system file picker, copies it
+into place itself, and builds `zelda3_assets.dat` from it using a bundled 14 KB
+BPS patch. This matters more than it sounds: the game reads its files from
+`Android/data/`, which since Android 11 the system file manager cannot browse,
+so previously getting a ROM in there meant a PC and a USB cable. Files with a
+512-byte copier header (common in `.smc` dumps) are handled automatically.
 
 **Configurable turbo speed**
 `TurboSpeed = 0` keeps the original behaviour (uncapped). From 2 to 5 you get an
