@@ -22,6 +22,8 @@
 #include "zelda_cpu_infra.h"
 
 #include "config.h"
+#include "overlay_menu.h"
+#include "touch_controls.h"
 #include "assets.h"
 #include "load_gfx.h"
 #include "util.h"
@@ -42,6 +44,8 @@ static void HandleGamepadAxisInput(int gamepad_id, int axis, int value);
 static void OpenOneGamepad(int i);
 static void HandleVolumeAdjustment(int volume_adjustment);
 static void LoadAssets();
+static int ShowAssetError(const char *reason);
+extern const char *g_asset_error, *g_asset_error_es;
 static void SwitchDirectory();
 
 enum {
@@ -75,6 +79,81 @@ void NORETURN Die(const char *error) {
 #endif
   fprintf(stderr, "Error: %s\n", error);
   exit(1);
+}
+
+// Notice screen for when the game data is missing. It is drawn with the menu's
+// own font onto a standalone texture, because at this point the engine does not
+// exist yet: LoadAssets() runs before the window is created.
+static int ShowAssetError(const char *reason) {
+  if (SDL_Init(SDL_INIT_VIDEO) != 0)
+    return 1;
+  SDL_Window *win = SDL_CreateWindow(kWindowTitle, SDL_WINDOWPOS_UNDEFINED,
+                                     SDL_WINDOWPOS_UNDEFINED, 640, 360,
+                                     SDL_WINDOW_FULLSCREEN_DESKTOP);
+  if (!win)
+    return 1;
+  SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
+  if (!ren)
+    return 1;
+  enum { kW = 426, kH = 240 };
+  SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
+                                       SDL_TEXTUREACCESS_STREAMING, kW, kH);
+  if (!tex)
+    return 1;
+
+  const char *dir = SDL_AndroidGetExternalStoragePath();
+  char l1[64] = "", l2[64] = "";
+  if (dir && *dir) {
+    // The path doesn't fit on one line: split it in half, at a slash.
+    size_t n = strlen(dir), cut = n / 2;
+    while (cut < n && dir[cut] != '/') cut++;
+    snprintf(l1, sizeof(l1), "%.*s", (int)cut, dir);
+    snprintf(l2, sizeof(l2), "%s", dir + cut);
+  }
+
+  for (bool run = true; run; ) {
+    SDL_Event e;
+    while (SDL_PollEvent(&e)) {
+      if (e.type == SDL_QUIT || e.type == SDL_KEYDOWN ||
+          e.type == SDL_FINGERDOWN || e.type == SDL_CONTROLLERBUTTONDOWN)
+        run = false;
+    }
+    void *pixels;
+    int pitch;
+    if (SDL_LockTexture(tex, NULL, &pixels, &pitch) == 0) {
+      OverlayDraw_Rect(pixels, pitch, kW, kH, 0, 0, kW, kH, 0x101018, 255);
+      OverlayDraw_Rect(pixels, pitch, kW, kH, 0, 30, kW, 32, 0xf0d060, 255);
+      int y = 14;
+      OverlayDraw_Text(pixels, pitch, kW, kH, 12, y, reason, 0xf0d060, 2);
+      y = 46;
+      OverlayDraw_Text(pixels, pitch, kW, kH, 12, y,
+                       OverlayMenu_Text("COPY YOUR ROM, NAMED",
+                                        "COPIA TU ROM CON EL NOMBRE"), 0xffffff, 1);
+      OverlayDraw_Text(pixels, pitch, kW, kH, 12, y + 12,
+                       OverlayMenu_Text("zelda3.sfc INTO THIS FOLDER:",
+                                        "zelda3.sfc EN ESTA CARPETA:"), 0xffffff, 1);
+      OverlayDraw_Text(pixels, pitch, kW, kH, 12, y + 30, l1, 0x90d090, 1);
+      OverlayDraw_Text(pixels, pitch, kW, kH, 12, y + 42, l2, 0x90d090, 1);
+      OverlayDraw_Text(pixels, pitch, kW, kH, 12, y + 66,
+                       OverlayMenu_Text("THE GAME BUILDS THE REST ITSELF.",
+                                        "EL JUEGO GENERA EL RESTO SOLO."),
+                       0xa0a0b0, 1);
+      OverlayDraw_Text(pixels, pitch, kW, kH, 12, kH - 24,
+                       OverlayMenu_Text("TAP THE SCREEN TO EXIT",
+                                        "TOCA LA PANTALLA PARA SALIR"),
+                       0x808090, 1);
+      SDL_UnlockTexture(tex);
+    }
+    SDL_RenderClear(ren);
+    SDL_RenderCopy(ren, tex, NULL, NULL);
+    SDL_RenderPresent(ren);
+    SDL_Delay(16);
+  }
+  SDL_DestroyTexture(tex);
+  SDL_DestroyRenderer(ren);
+  SDL_DestroyWindow(win);
+  SDL_Quit();
+  return 1;
 }
 
 void ChangeWindowScale(int scale_step) {
@@ -169,6 +248,10 @@ static void DrawPpuFrameWithPerf() {
   }
   if (g_display_perf)
     RenderNumber(pixel_buffer + pitch * render_scale, pitch, g_curr_fps, render_scale == 4);
+  TouchControls_Draw(pixel_buffer, pitch, g_snes_width * render_scale,
+                     g_snes_height * render_scale);
+  OverlayMenu_Draw(pixel_buffer, pitch, g_snes_width * render_scale,
+                   g_snes_height * render_scale);
   g_renderer_funcs.EndDraw();
 }
 
@@ -290,6 +373,8 @@ int main(int argc, char** argv) {
 
   ParseConfigFile(config_file);
   LoadAssets();
+  if (g_asset_error)
+    return ShowAssetError(OverlayMenu_Text(g_asset_error, g_asset_error_es));
   LoadLinkGraphics();
 
   ZeldaInitialize();
@@ -306,6 +391,8 @@ int main(int argc, char** argv) {
                        g_config.extend_y * kPpuRenderFlags_Height240 |
                        g_config.no_sprite_limits * kPpuRenderFlags_NoSpriteLimits;
   ZeldaEnableMsu(g_config.enable_msu);
+  ZeldaSetWidescreenEdgeMode(g_config.widescreen_edge_mode);
+  TouchControls_Init();
   ZeldaSetLanguage(g_config.language);
 
   if (g_config.fullscreen == 1)
@@ -436,6 +523,11 @@ int main(int argc, char** argv) {
       case SDL_KEYUP:
         HandleInput(event.key.keysym.sym, event.key.keysym.mod, false);
         break;
+      case SDL_FINGERDOWN:
+      case SDL_FINGERUP:
+      case SDL_FINGERMOTION:
+        TouchControls_HandleEvent(&event);
+        break;
       case SDL_QUIT:
         running = false;
         break;
@@ -459,13 +551,21 @@ int main(int argc, char** argv) {
       g_gamepad_buttons = 0;
     inputs |= g_gamepad_buttons;
 
-    SDL_LockMutex(g_audio_mutex);
-    bool is_replay = ZeldaRunFrame(inputs);
-    SDL_UnlockMutex(g_audio_mutex);
+    // With TurboSpeed 2..5 several logic frames run per drawn frame, so vsync
+    // sets the pace and the speed is an exact multiple. With 0 the original
+    // uncapped turbo is kept.
+    int logic_frames = (g_turbo && g_config.turbo_speed >= 2) ? g_config.turbo_speed : 1;
+    bool is_replay = false;
+    for (int lf = 0; lf < logic_frames; lf++) {
+      SDL_LockMutex(g_audio_mutex);
+      is_replay = ZeldaRunFrame(inputs);
+      SDL_UnlockMutex(g_audio_mutex);
+      frameCtr++;
+    }
 
-    frameCtr++;
-
-    if ((g_turbo ^ (is_replay & g_replay_turbo)) && (frameCtr & (g_turbo ? 0xf : 0x7f)) != 0) {
+    if (logic_frames == 1 &&
+        (g_turbo ^ (is_replay & g_replay_turbo)) &&
+        (frameCtr & (g_turbo ? 0xf : 0x7f)) != 0) {
       continue;
     }
 
@@ -562,9 +662,41 @@ static void RenderNumber(uint8 *dst, size_t pitch, int n, bool big) {
     RenderDigit(dst + (i << big), pitch, *s - '0', 0xffffff, big);
 }
 
+// Touch controls come in through the same door as keyboard and gamepad.
+void TouchInputCallback(int control_index, bool pressed) {
+  if (control_index == kTouchToggleTurbo) {
+    HandleCommand(kKeys_Turbo, pressed);
+    return;
+  }
+  HandleCommand(kKeys_Controls + control_index, pressed);
+}
+
+// Actions the on-screen menu delegates to the engine.
+void OverlayMenu_RunAction(int action) {
+  switch (action) {
+  case kMenuActionSaveState: HandleCommand(kKeys_Save, true); break;
+  case kMenuActionLoadState: HandleCommand(kKeys_Load, true); break;
+  case kMenuActionMoveButtons:
+    // Toggles, so the mode can also be left from the gamepad if touch fails.
+    TouchControls_SetEditMode(!TouchControls_EditMode());
+    break;
+  case kMenuActionResetButtons: TouchControls_ResetLayout(); break;
+  default: break;
+  }
+}
+
 static void HandleCommand_Locked(uint32 j, bool pressed);
 
 static void HandleCommand(uint32 j, bool pressed) {
+  if (j == kKeys_OverlayMenu) {
+    if (pressed)
+      OverlayMenu_Toggle();
+    return;
+  }
+  // While the menu is open the game gets no input: it sits still behind it.
+  if (OverlayMenu_HandleCommand(j, pressed))
+    return;
+
   if (j <= kKeys_Controls_Last) {
     static const uint8 kKbdRemap[] = { 0, 4, 5, 6, 7, 2, 3, 8, 0, 9, 1, 10, 11 };
     if (pressed)
@@ -810,6 +942,11 @@ static void LoadLinkGraphics() {
 const uint8 *g_asset_ptrs[kNumberOfAssets];
 uint32 g_asset_sizes[kNumberOfAssets];
 
+// Why the assets could not be loaded, or NULL if all went well. This used to be
+// a Die(), which on Android turns into a SIGABRT: the app vanished without
+// saying anything and the reason stayed buried in logcat.
+const char *g_asset_error, *g_asset_error_es;
+
 static void LoadAssets() {
   size_t length = 0;
   uint8 *data = ReadWholeFile("zelda3_assets.dat", &length);
@@ -817,22 +954,34 @@ static void LoadAssets() {
     size_t bps_length, bps_src_length;
     uint8 *bps, *bps_src;
     bps = ReadWholeFile("zelda3_assets.bps", &bps_length);
-    if (!bps)
-      Die("Failed to read zelda3_assets.dat. Please see the README for information about how you get this file.");
+    if (!bps) {
+      g_asset_error = "GAME DATA NOT FOUND";
+      g_asset_error_es = "NO SE ENCONTRARON LOS DATOS";
+      return;
+    }
     bps_src = ReadWholeFile("zelda3.sfc", &bps_src_length);
-    if (!bps_src)
-      Die("Missing file: zelda3.sfc");
+    if (!bps_src) {
+      g_asset_error = "ROM NOT FOUND";
+      g_asset_error_es = "FALTA LA ROM";
+      return;
+    }
     data = ApplyBps(bps_src, bps_src_length, bps, bps_length, &length);
-    if (!data)
-      Die("Unable to apply zelda3_assets.bps. Please make sure you got the right version of 'zelda3.sfc'");
+    if (!data) {
+      g_asset_error = "WRONG ROM VERSION";
+      g_asset_error_es = "LA ROM NO ES LA CORRECTA";
+      return;
+    }
   }
 
   static const char kAssetsSig[] = { kAssets_Sig };
 
   if (length < 16 + 32 + 32 + 8 + kNumberOfAssets * 4 ||
       memcmp(data, kAssetsSig, 48) != 0 ||
-      *(uint32*)(data + 80) != kNumberOfAssets)
-    Die("Invalid assets file");
+      *(uint32*)(data + 80) != kNumberOfAssets) {
+    g_asset_error = "INVALID DATA FILE";
+      g_asset_error_es = "ARCHIVO DE DATOS NO VALIDO";
+    return;
+  }
 
   uint32 offset = 88 + kNumberOfAssets * 4 + *(uint32 *)(data + 84);
 

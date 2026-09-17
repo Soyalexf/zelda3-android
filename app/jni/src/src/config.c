@@ -58,7 +58,7 @@ static const KeyNameId kKeyNameId[] = {
   M(Controls), M(Load), M(Save), M(Replay), M(LoadRef), M(ReplayRef),
   S(CheatLife), S(CheatKeys), S(CheatEquipment), S(CheatWalkThroughWalls),
   S(ClearKeyLog), S(StopReplay), S(Fullscreen), S(Reset),
-  S(Pause), S(PauseDimmed), S(Turbo), S(ReplayTurbo), S(WindowBigger), S(WindowSmaller), S(VolumeUp), S(VolumeDown), S(DisplayPerf), S(ToggleRenderer),
+  S(Pause), S(PauseDimmed), S(Turbo), S(ReplayTurbo), S(WindowBigger), S(WindowSmaller), S(VolumeUp), S(VolumeDown), S(DisplayPerf), S(ToggleRenderer), S(OverlayMenu),
 };
 #undef S
 #undef M
@@ -437,6 +437,29 @@ static bool HandleIniConfig(int section, const char *key, char *value) {
         g_config.features0 |= kFeatures0_ExtendScreen64;
       if (g_config.extended_aspect_ratio && !novis)
         g_config.features0 |= kFeatures0_WidescreenVisualFixes;
+      return true;
+    } else if (StringEqualsNoCase(key, "TouchControls")) {
+      // 0 = automatic (only without a gamepad), 1 = always, 2 = never
+      g_config.touch_controls = (uint8)strtol(value, (char**)NULL, 10);
+      return true;
+    } else if (StringEqualsNoCase(key, "MenuLanguage")) {
+      // On-screen menu language: 0 = English, 1 = Spanish.
+      g_config.menu_language = (uint8)strtol(value, (char**)NULL, 10);
+      return true;
+    } else if (StringEqualsNoCase(key, "TouchStick")) {
+      // 0 = fixed d-pad, 1 = floating stick that appears under your finger
+      g_config.touch_stick = (uint8)strtol(value, (char**)NULL, 10);
+      return true;
+    } else if (StringEqualsNoCase(key, "TurboSpeed")) {
+      // 0 = original behaviour (uncapped, draws 1 frame out of every 16)
+      // 2..5 = exact speed multiple, paced by vsync
+      int v = (int)strtol(value, (char**)NULL, 10);
+      g_config.turbo_speed = (uint8)(v >= 2 && v <= 5 ? v : 0);
+      return true;
+    } else if (StringEqualsNoCase(key, "WidescreenEdgeMode")) {
+      // 0 = original behaviour (black bars at the area edges)
+      // 1 = locked camera: no bars, never looking at unloaded territory
+      g_config.widescreen_edge_mode = (uint8)strtol(value, (char**)NULL, 10);
       return true;
     } else if (StringEqualsNoCase(key, "DisplayPerfInTitle")) {
       return ParseBool(value, &g_config.display_perf_title);

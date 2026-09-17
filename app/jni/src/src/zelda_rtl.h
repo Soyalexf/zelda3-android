@@ -57,6 +57,9 @@ void ZeldaApuUnlock();
 bool ZeldaIsPlayingMusicTrack(uint8 track);
 uint8 ZeldaGetEntranceMusicTrack(int track);
 void ZeldaSetLanguage(const char *language);
+void ZeldaSetWidescreenEdgeMode(int mode);
+int ZeldaGetWidescreenEdgeMode(void);
+int ZeldaGetWidescreenFixedCameraMargin(void);
 void PatchCommand(char cmd);
 
 // Things for state management

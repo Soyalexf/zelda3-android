@@ -53,6 +53,9 @@ struct Ppu {
   uint32_t renderPitch;
   uint8_t *renderBuffer;
   uint8_t extraLeftCur, extraRightCur, extraLeftRight, extraBottomCur;
+  // Horizontal offset applied to sprites so they follow the background when
+  // the visual camera is locked. Render-only.
+  int16_t renderObjXOffset;
   float mode7PerspectiveLow, mode7PerspectiveHigh;
 
   // TMW / TSW etc

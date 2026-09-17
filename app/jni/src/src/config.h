@@ -34,6 +34,7 @@ enum {
   kKeys_ToggleRenderer,
   kKeys_VolumeUp,
   kKeys_VolumeDown,
+  kKeys_OverlayMenu,
   kKeys_Total,
 };
 
@@ -60,6 +61,11 @@ typedef struct Config {
   uint16 audio_samples;
   bool autosave;
   uint8 extended_aspect_ratio;
+  uint8 widescreen_edge_mode;
+  uint8 turbo_speed;
+  uint8 touch_controls;
+  uint8 touch_stick;
+  uint8 menu_language;
   bool extend_y;
   bool no_sprite_limits;
   bool display_perf_title;
