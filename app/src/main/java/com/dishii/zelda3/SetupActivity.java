@@ -16,7 +16,10 @@ import android.widget.Toast;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.FileInputStream;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
+import java.util.zip.CRC32;
 import java.util.Locale;
 
 /**
@@ -60,11 +63,54 @@ public class SetupActivity extends Activity {
         return d != null ? d : getFilesDir();
     }
 
-    /** Either the prebuilt asset file or a ROM to build it from is enough. */
+    /**
+     * Either the prebuilt asset file, or a ROM the bundled patch can actually
+     * use. The ROM is checked rather than merely counted: a wrong file copied
+     * here would otherwise look like valid data forever, sending every launch
+     * straight to the engine's error screen with no way back to the picker.
+     */
     private boolean hasGameData() {
         File dir = filesDir();
-        return new File(dir, "zelda3_assets.dat").exists()
-                || new File(dir, "zelda3.sfc").exists();
+        if (new File(dir, "zelda3_assets.dat").exists())
+            return true;
+        File rom = new File(dir, "zelda3.sfc");
+        return rom.exists() && romMatchesPatch(rom);
+    }
+
+    /** The expected ROM checksum, read from the bundled BPS patch's footer. */
+    private long expectedRomCrc() {
+        File bps = new File(filesDir(), "zelda3_assets.bps");
+        try (RandomAccessFile f = new RandomAccessFile(bps, "r")) {
+            if (f.length() < 12)
+                return -1;
+            f.seek(f.length() - 12);
+            byte[] b = new byte[4];
+            f.readFully(b);
+            return ((long) (b[0] & 0xff)) | ((long) (b[1] & 0xff) << 8)
+                    | ((long) (b[2] & 0xff) << 16) | ((long) (b[3] & 0xff) << 24);
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    private boolean romMatchesPatch(File rom) {
+        long want = expectedRomCrc();
+        if (want < 0)
+            return true;  // no patch to check against: let the engine decide
+        return crc32(rom) == want;
+    }
+
+    private static long crc32(File f) {
+        CRC32 crc = new CRC32();
+        try (FileInputStream in = new FileInputStream(f)) {
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) > 0)
+                crc.update(buf, 0, n);
+            return crc.getValue();
+        } catch (IOException e) {
+            return -1;
+        }
     }
 
     private void deployBundledFiles() {
@@ -173,12 +219,23 @@ public class SetupActivity extends Activity {
         if (request != kPickRom || result != RESULT_OK || data == null
                 || data.getData() == null)
             return;
-        if (copyRom(data.getData())) {
-            startGame();
-        } else {
+        if (!copyRom(data.getData())) {
             Toast.makeText(this, t("Could not read that file",
                     "No se pudo leer ese archivo"), Toast.LENGTH_LONG).show();
+            return;
         }
+        File rom = new File(filesDir(), "zelda3.sfc");
+        if (!romMatchesPatch(rom)) {
+            // Delete it, or the next launch would take this for valid data and
+            // never offer the picker again.
+            rom.delete();
+            Toast.makeText(this, t(
+                    "That is not the right ROM. It must be A Link to the Past (USA).",
+                    "Esa no es la ROM correcta. Debe ser A Link to the Past (USA)."),
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        startGame();
     }
 
     private boolean copyRom(Uri uri) {
